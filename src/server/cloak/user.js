@@ -37,7 +37,7 @@ module.exports = (function() {
     },
 
     connected: function() {
-      return this.disconnectedSince === null;
+      return this.disconnectedSince == null;
     },
 
     _userData: function() {

@@ -31,7 +31,8 @@ module.exports = (function() {
     pruneEmptyRooms: null,
     roomLife: null,
     autoJoinLobby: true,
-    notifyRoomChanges: true
+    notifyRoomChanges: true,
+    origins: null
   };
 
   var config;
@@ -88,6 +89,10 @@ module.exports = (function() {
       // We won't want to try to serialize this later
       if (config.express) {
         delete config.express;
+      }
+
+      if (config.origins) {
+        io.set('origins', config.origins);
       }
 
       io.set('log level', config.logLevel);

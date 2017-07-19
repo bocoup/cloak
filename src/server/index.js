@@ -1,16 +1,32 @@
 /* cloak server */
 /* jshint node:true */
 
-var _ = require('underscore');
+var _ = require('lodash');
 var socketIO = require('socket.io');
 var uuid = require('node-uuid');
-var colors = require('colors');
+var debug = require('debug')('cloak');
 
 var User = require('./user.js');
 var Room = require('./room.js');
 var Timer = require('./timer.js');
 
-module.exports = (function() {
+module.exports = cloakFactory();
+
+var defaults = {
+  port: 8090,
+  logLevel: 1,
+  gameLoopSpeed: 100,
+  defaultRoomSize: null,
+  autoCreateRooms: false,
+  minRoomMembers: null,
+  reconnectWait: 10000,
+  pruneEmptyRooms: null,
+  roomLife: null,
+  autoJoinLobby: true,
+  notifyRoomChanges: true
+};
+
+function cloakFactory() {
 
   var users = {};
   var rooms = {};
@@ -20,47 +36,26 @@ module.exports = (function() {
   var lobby;
   var roomNum = 0;
 
-  var defaults = {
-    port: 8090,
-    gameLoopSpeed: 100,
-    defaultRoomSize: null,
-    autoCreateRooms: false,
-    minRoomMembers: null,
-    reconnectWait: 10000,
-    pruneEmptyRooms: null,
-    roomLife: null,
-    autoJoinLobby: true,
-    notifyRoomChanges: true
-  };
-
   var config;
   var events;
-
-  colors.setTheme({
-    info: 'cyan',
-    warn: 'yellow',
-    error: 'red'
-  });
 
   var cloak = {
 
     // shorthand to get host string for socket
     _host: function(socket) {
-      return socket.handshake.address.address;
+      return socket.handshake.address;//.address;
     },
 
     // configure the server
     configure: function(configArg) {
-
+      
       config = _.extend({}, defaults);
       events = {};
 
-      _(configArg).forEach(function(val, key) {
-        if (key === 'room' ||
-            key === 'lobby') {
+      _.forEach(configArg, function(val, key) {
+        if (_.includes(['room', 'lobby'], key)) {
           events[key] = val;
-        }
-        else {
+        } else {
           config[key] = val;
         }
       });
@@ -69,19 +64,19 @@ module.exports = (function() {
     // run the server
     run: function() {
 
-      if (this.port !== undefined && typeof this.port !== 'number') {
+      if (_.isFinite(this.port)) {
         throw 'Port must be a number. Trying to use express? ' +
               'Pass the server into express instead of port.';
       }
 
-      io = socketIO.listen(config.express || config.port);
+      io = socketIO(config.express || config.port);
 
       if (config.express) {
-        console.log(('cloak running with express on port ' +
+        debug(('cloak running with express on port ' +
                     config.express.address().port).info);
       }
       else {
-        console.log(('cloak running on port ' + config.port).info);
+        debug(('cloak running on port ' + config.port).info);
       }
 
       // We won't want to try to serialize this later
@@ -89,12 +84,9 @@ module.exports = (function() {
         delete config.express;
       }
 
-      // Cloak defaults Socket.IO log level to 1
-      io.set('log level', 1);
-
       // Apply user Socket.IO settings
       var ioConfig = config.socketIo;
-      if (typeof ioConfig === 'object') {
+      if (_.isObject(ioConfig)) {
         for (var key in ioConfig) {
           io.set(key, ioConfig[key]);
         }
@@ -106,8 +98,8 @@ module.exports = (function() {
       Room.prototype._autoJoinLobby = config.autoJoinLobby;
       Room.prototype._minRoomMembers = config.minRoomMembers;
 
-      io.sockets.on('connection', function(socket) {
-        console.log((cloak._host(socket) + ' connects').info);
+      io.on('connection', function(socket) {
+        debug((cloak._host(socket) + ' connects').info);
 
         socket.on('disconnect', function(data) {
           var uid = socketIdToUserId[socket.id];
@@ -120,16 +112,17 @@ module.exports = (function() {
           if (config.clientEvents && config.clientEvents.disconnect) {
             config.clientEvents.disconnect(user);
           }
-          console.log((cloak._host(socket) + ' disconnects').info);
+          debug((cloak._host(socket) + ' disconnects').info);
         });
 
         socket.on('cloak-begin', function(data) {
           var user = new User(cloak, socket, data);
+
           users[user.id] = user;
           socketIdToUserId[socket.id] = user.id;
           cloak._setupHandlers(socket);
           socket.emit('cloak-beginResponse', {uid:user.id, config:config});
-          console.log((cloak._host(socket) + ' begins').info);
+          debug((cloak._host(socket) + ' begins').info);
           if (config.autoJoinLobby) {
             lobby.addMember(user);
           }
@@ -153,24 +146,26 @@ module.exports = (function() {
             if (config.clientEvents && config.clientEvents.resume) {
               config.clientEvents.resume(user);
             }
-            console.log((cloak._host(socket) + ' resumes').info);
+            debug((cloak._host(socket) + ' resumes').info);
           }
           else {
             socket.emit('cloak-resumeResponse', {valid: false});
-            console.log((cloak._host(socket) + ' fails to resume').info);
+            debug((cloak._host(socket) + ' fails to resume').info);
           }
         });
 
       });
 
-      gameLoopInterval = setInterval(function() {
+      gameLoopInterval = setInterval(gameLoop, config.gameLoopSpeed);
+
+      function gameLoop() {
         var room;
 
         // Pulse lobby
         lobby._pulse();
 
         // Pulse all rooms
-        _(rooms).forEach(function(room) {
+        _.forEach(rooms, function(room) {
           var oldEnoughToPrune = room.members.length < 1 && new Date().getTime() - room._lastEmpty >= config.pruneEmptyRooms;
           var roomExpired = config.roomLife !== null && new Date().getTime() - room.created >= config.roomLife;
 
@@ -198,7 +193,7 @@ module.exports = (function() {
 
         // Prune rooms with member counts below minRoomMembers
         if (config.minRoomMembers !== null) {
-          _(rooms).forEach(function(room) {
+          _.forEach(rooms, function(room) {
             if (room._hasReachedMin && room.members.length < config.minRoomMembers) {
               room.delete();
             }
@@ -208,7 +203,12 @@ module.exports = (function() {
         // reconnectWait and reconnectWaitRoomless
         // aka prune users that have been disconnected too long
         if (config.reconnectWait !== null || config.reconnectWaitRoomless !== null) {
-          _(users).forEach(function(user) {
+          _.forEach(users, function(user) {
+
+            if (user === undefined) {
+              debug(user);
+              return;
+            }
 
             if (user.connected()) {
               return;
@@ -230,13 +230,13 @@ module.exports = (function() {
           });
         }
 
-      }, config.gameLoopSpeed);
+      }
 
     },
 
     _setupHandlers: function(socket) {
 
-      _(config.messages).each(function(handler, name) {
+      _.each(config.messages, function(handler, name) {
         socket.on('message-' + name, function(arg) {
           var user = cloak._getUserForSocket(socket);
           try {
@@ -253,7 +253,9 @@ module.exports = (function() {
 
     getRooms: function(json) {
       if (json) {
-        return _.invoke(rooms, '_roomData');
+        return _.map(rooms, function (room) {
+          return _.invoke(room, '_roomData');
+        });
       }
       else {
         return _.values(rooms);
@@ -304,11 +306,11 @@ module.exports = (function() {
     },
 
     userCount: function() {
-      return _(users).size();
+      return _.size(users);
     },
 
     roomCount: function() {
-      return _(rooms).size();
+      return _.size(rooms);
     },
 
     getUser: function(id) {
@@ -317,7 +319,9 @@ module.exports = (function() {
 
     getUsers: function(json) {
       if (json) {
-        return _.invoke(users, '_userData');
+        return _.map(users, function (user) {
+          return _.invoke(user, '_userData');
+        });
       }
       else {
         return _.values(users);
@@ -325,7 +329,7 @@ module.exports = (function() {
     },
 
     messageAll: function(name, arg) {
-      _(users).forEach(function(user) {
+      _.forEach(users, function(user) {
         user.message(name, arg);
       });
     },
@@ -336,19 +340,19 @@ module.exports = (function() {
       clearInterval(gameLoopInterval);
 
       // Delete all users
-      _(users).forEach(function(user) {
+      _.forEach(users, function(user) {
         user.delete();
       });
 
       // Delete all rooms
-      _(rooms).forEach(function(room) {
+      _.forEach(rooms, function(room) {
         room.delete();
       });
 
       // Shut down socket server
       if (io) {
         try {
-          io.server.close();
+          io.close();
           callback();
         }
         catch(e) {
@@ -373,4 +377,4 @@ module.exports = (function() {
 
   return cloak;
 
-})();
+}

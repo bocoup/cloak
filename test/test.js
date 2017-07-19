@@ -2,7 +2,8 @@
 
 // Basic tests
 
-var _ = require('underscore');
+var _ = require('lodash');
+var debug = require('debug')('cloak:test');
 
 var suite = Object.create(require('./lib/superSuite.js'));
 
@@ -21,7 +22,9 @@ module.exports = _.extend(suite, {
       messages: {
         dog: function(arg, user) {
           test.equals(arg.foo, 123);
-          user.message('cat', {bar: 456});
+          user.message('cat', {
+            bar: 456
+          });
         }
       }
     });
@@ -29,7 +32,9 @@ module.exports = _.extend(suite, {
     client.configure({
       serverEvents: {
         begin: function() {
-          client.message('dog', {foo: 123});
+          client.message('dog', {
+            foo: 123
+          });
         }
       },
       messages: {
@@ -62,11 +67,15 @@ module.exports = _.extend(suite, {
       messages: {
         dog1: function(arg, user) {
           test.ok(true, 'received message from client 1');
-          user.message('cat', {bar: 456});
+          user.message('cat', {
+            bar: 456
+          });
         },
         dog2: function(arg, user) {
           test.ok(true, 'received message from client 2');
-          user.message('cat', {bar: 789});
+          user.message('cat', {
+            bar: 789
+          });
         }
       }
     });
@@ -140,7 +149,7 @@ module.exports = _.extend(suite, {
     }
 
     function joinRoomHandler(room) {
-      step('joined '+ room.name);
+      step('joined ' + room.name);
       if (steps[0] === 'leave room') {
         step('leave room');
         client1.message('leaveRoom');
@@ -212,7 +221,7 @@ module.exports = _.extend(suite, {
   // to test those ones.
   serverEvents: function(test) {
 
-    test.expect(7);
+    // test.expect(9);
 
     var server = this.server;
     var client = suite.createClient();
@@ -224,21 +233,26 @@ module.exports = _.extend(suite, {
     client.configure({
       serverEvents: {
         connecting: function() {
+          debug('connecting');
           test.ok(true, 'connecting event happened');
         },
         begin: function() {
+          debug('begin');
           test.ok(true, 'begin event happened');
           client._disconnect();
         },
         disconnect: function() {
+          debug('disconnect');
           test.ok(true, 'disconnect event happened');
           client._connect();
         },
         resume: function() {
+          debug('resume');
           test.ok(true, 'resume event happened');
           client.stop();
         },
         end: function() {
+          debug('end');
           test.ok(true, 'end event happened');
           test.done();
         }
@@ -256,16 +270,22 @@ module.exports = _.extend(suite, {
 
     var client = suite.createClient();
 
+    var errors = 0;
+
     client.configure({
       serverEvents: {
         error: function(arg) {
-          test.ok(arg.match('ECONNREFUSED'));
-          test.done();
+          if (!errors) {
+            errors++;
+            debug('*** erorrs', errors, arg);
+            test.ok(arg.match('Connect error'));
+            test.done();
+          }
         }
       }
     });
 
-    client.run(this.host + '123');
+    client.run(this.host.replace(this.port, '12345'));
 
   },
 
@@ -1212,7 +1232,7 @@ module.exports = _.extend(suite, {
     client.run(this.host);
   },
 
-  initialData: function (test) {
+  initialData: function(test) {
     test.expect(1);
 
     var server = this.server;
@@ -1221,7 +1241,7 @@ module.exports = _.extend(suite, {
     server.configure({
       port: this.port,
       lobby: {
-        newMember: function (user) {
+        newMember: function(user) {
           test.equals(user.data.test, 'test');
           test.done();
         }
@@ -1317,7 +1337,7 @@ module.exports = _.extend(suite, {
   // Test Socket.IO configuration on the server
   serverIoConfig: function(test) {
 
-    test.expect(1);
+    test.expect(3);
 
     var server = this.server;
     var client = suite.createClient();
@@ -1325,13 +1345,17 @@ module.exports = _.extend(suite, {
     server.configure({
       port: this.port,
       socketIo: {
-        'heartbeat interval': 123
+        'heartbeat interval': 123,
+        'heartbeat timeout': 456,
+        'transports': 'websocket'
       }
     });
 
     server.run();
 
-    test.equals(server._getIo().get('heartbeat interval'), 123);
+    test.equals(server._getIo().engine.pingInterval, 123);
+    test.equals(server._getIo().engine.pingTimeout, 456);
+    test.equals(server._getIo().engine.transports, 'websocket');
     test.done();
 
 

@@ -2,7 +2,7 @@
 
 // Basic tests
 
-var _ = require('underscore');
+var _ = require('lodash');
 var express = require('express');
 
 var suite = Object.create(require('./lib/superSuite.js'));
@@ -12,10 +12,10 @@ module.exports = _.extend(suite, {
   // Test basic messaging, to and from client
   integration: function(test) {
 
-    test.expect(2);
+    test.expect(1);
 
     var express = require('express');
-     
+
     var app = express();
     var expressServer = app.listen(3000);
 
@@ -28,9 +28,6 @@ module.exports = _.extend(suite, {
 
     client.configure({
       serverEvents: {
-        connecting: function() {
-          test.ok(true, 'connecting');
-        },
         begin: function() {
           test.ok(true, 'begin');
           test.done();
@@ -43,5 +40,5 @@ module.exports = _.extend(suite, {
     client.run('http://localhost:3000');
 
   }
-  
+
 });

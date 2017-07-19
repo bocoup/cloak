@@ -2,12 +2,10 @@
 
 // Nodeunit tests for Cloak client and server
 
-var connect = require('connect');
-var path = require('path');
-var _ = require('underscore');
-var io = require('socket.io-client');
+var _ = require('lodash');
+var debug = require('debug')('cloak:super-suite');
 
-var cloakServer = require('../../src/server/cloak');
+var cloakServer = require('../../src/server');
 var createCloakClient = require('../../src/client/cloak');
 
 var clients;
@@ -34,19 +32,19 @@ module.exports = {
   // Shut down server and all clients
   tearDown: function(callback) {
     try {
-      _(clients).forEach(function(client) {
+      _.forEach(clients, function(client) {
         if (client.connected()) {
-          console.log('ending client');
+          debug('ending client');
           client.stop();
         }
         else {
-          console.log('client already disconnected');
+          debug('client already disconnected');
         }
       });
       clients = null;
-      console.log('stopping server');
+      debug('stopping server');
       this.server.stop(function() {
-        console.log('server stopped');
+        debug('server stopped');
         callback();
       });
     }
